@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tra Cứu Thông Tin Sản Phẩm - HEM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Thư viện hỗ trợ quét QR qua Camera -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        hem: {
+                            blue: '#00529C', /* Màu xanh đặc trưng của doanh nghiệp công nghiệp */
+                            light: '#E6F0F9',
+                            dark: '#003366',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Sửa một số kiểu mặc định của phần tử reader QR */
+        #reader { border: none !important; }
+        #reader video { border-radius: 0.5rem; object-fit: cover; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans flex flex-col min-h-screen print:bg-white">
+
+    <!-- Header (Ẩn khi in) -->
+    <header class="bg-hem-blue text-white shadow-md print:hidden">
+        <div class="container mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-4">
+                <a href="https://hem.com.vn/" class="shrink-0">
+                    <img src="https://hem.com.vn/wp-content/uploads/logo.png" alt="HEM Logo" class="h-10 md:h-12 bg-white px-2 py-1 md:px-3 md:py-1.5 rounded shadow-sm hover:opacity-90 transition">
+                </a>
+                <div class="hidden sm:block">
+                    <h1 class="text-sm md:text-base font-bold uppercase tracking-wider">Công Ty Cổ Phần Chế Tạo Điện Cơ HEM</h1>
+                </div>
+            </div>
+            <nav class="flex space-x-4 md:space-x-6 text-sm font-medium items-center">
+                <a href="https://hem.com.vn/" class="hover:text-yellow-400 transition">Trang Chủ</a>
+                <a href="#" class="text-yellow-400 border-b-2 border-yellow-400 pb-1">Tra Cứu</a>
+                <a href="https://noibo.hem.com.vn" class="hover:text-yellow-400 transition">Nội bộ</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-4 py-8 max-w-5xl flex-grow print:py-0 print:px-0 print:max-w-none">
+        
+        <!-- Breadcrumb & Title (Ẩn khi in) -->
+        <div class="mb-8 text-center print:hidden">
+            <h2 class="text-3xl font-bold text-hem-dark mb-2 uppercase">Tra Cứu Thông Tin Động Cơ</h2>
+            <p class="text-gray-600">Quét mã QR trên nhãn động cơ hoặc nhập số Serial (Sau No.) để tra cứu thông số và bảo hành.</p>
+        </div>
+
+        <!-- Search Box (Ẩn khi in) -->
+        <div class="max-w-2xl mx-auto mb-10 bg-white p-6 rounded-lg shadow-sm border border-gray-200 print:hidden">
+            <div class="flex flex-col sm:flex-row gap-3">
+                <div class="relative flex-1">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <i class="fa-solid fa-qrcode text-gray-400"></i>
+                    </div>
+                    <input type="text" id="searchInput" placeholder="Ví dụ: 4KAC5YMG8" 
+                        class="block w-full pl-10 pr-12 py-3 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-hem-blue focus:border-hem-blue sm:text-sm transition">
+                    <button type="button" onclick="openQRModal()" class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-hem-blue transition" title="Mở Camera quét mã">
+                        <i class="fa-solid fa-camera text-xl"></i>
+                    </button>
+                </div>
+                <button onclick="simulateSearch()" class="bg-hem-blue hover:bg-hem-dark text-white px-6 py-3 rounded-md font-medium transition flex items-center justify-center gap-2 w-full sm:w-auto">
+                    <i class="fa-solid fa-magnifying-glass"></i> Tra Cứu
+                </button>
+            </div>
+            <p id="errorMsg" class="text-red-500 text-sm mt-2 hidden"><i class="fa-solid fa-circle-exclamation"></i> Vui lòng nhập số Serial hợp lệ.</p>
+        </div>
+
+        <!-- Loading Spinner (Ẩn khi in) -->
+        <div id="loading" class="hidden text-center py-10 print:hidden">
+            <i class="fa-solid fa-circle-notch fa-spin text-4xl text-hem-blue"></i>
+            <p class="mt-2 text-gray-500">Đang truy xuất dữ liệu...</p>
+        </div>
+
+        <!-- Result Card -->
+        <!-- Lưu ý: print:shadow-none và print:border-0 giúp bản in phẳng và sạch hơn -->
+        <div id="resultCard" class="hidden bg-white shadow-lg rounded-xl overflow-hidden border border-gray-200 print:block print:shadow-none print:border-none">
+            
+            <!-- Result Header -->
+            <div class="bg-hem-light px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 print:bg-white print:border-b-2 print:border-gray-800">
+                <div>
+                    <h3 class="text-lg font-bold text-hem-dark print:text-black uppercase">Công Ty Cổ Phần Chế Tạo Điện Cơ HEM</h3>
+                    <p class="text-sm text-gray-600 print:text-black mt-1">Động cơ điện S/N: <span id="res-sn" class="font-mono font-bold text-gray-800 print:text-black text-base"></span></p>
+                </div>
+                <span class="bg-orange-500 text-white text-sm font-bold px-4 py-1.5 rounded-full shadow-md whitespace-nowrap print:border print:border-gray-800 print:bg-white print:text-black">
+                    <i class="fa-solid fa-check-circle mr-1 print:hidden"></i> Sản phẩm chính hãng
+                </span>
+            </div>
+
+            <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+                
+                <!-- Cột 1: Thông tin chung -->
+                <div>
+                    <h4 class="flex items-center text-hem-dark font-semibold border-b pb-2 mb-4 print:text-black print:border-gray-400">
+                        <i class="fa-solid fa-clipboard-list w-6 print:hidden"></i> Thông tin chung
+                    </h4>
+                    <table class="w-full text-sm text-left">
+                        <tbody>
+                            <tr class="border-b border-gray-100 print:border-gray-200">
+                                <td class="py-2 text-gray-500 w-2/5 print:text-gray-800">Loại động cơ (Type)</td>
+                                <td class="py-2 font-medium text-hem-blue print:text-black" id="res-type">3K-132M4</td>
+                            </tr>
+                            <tr class="border-b border-gray-100 print:border-gray-200">
+                                <td class="py-2 text-gray-500 w-2/5 print:text-gray-800">Xuất xưởng (Mfg. Date)</td>
+                                <td class="py-2 font-medium">15/08/2023</td>
+                            </tr>
+                            <tr class="border-b border-gray-100 print:border-gray-200">
+                                <td class="py-2 text-gray-500 print:text-gray-800">Bảo hành (Warranty)</td>
+                                <td class="py-2 font-medium text-hem-blue print:text-black">15/08/2025</td>
+                            </tr>
+                            <tr class="border-b border-gray-100 print:border-gray-200">
+                                <td class="py-2 text-gray-500 print:text-gray-800">Khối lượng (Weight)</td>
+                                <td class="py-2 font-medium">75 kg</td>
+                            </tr>
+                            <tr class="border-b border-gray-100 print:border-gray-200">
+                                <td class="py-2 text-gray-500 print:text-gray-800">Cấp bảo vệ (IP)</td>
+                                <td class="py-2 font-medium">IP55</td>
+                            </tr>
+                            <tr class="border-b border-gray-100 print:border-gray-200">
+                                <td class="py-2 text-gray-500 print:text-gray-800">Kiểu lắp đặt (Duty)</td>
+                                <td class="py-2 font-medium">S1 (Liên tục)</td>
+                            </tr>
+                            <tr class="border-b border-gray-100 print:border-gray-200">
+                                <td class="py-2 text-gray-500 print:text-gray-800">Vòng bi trước (DE)</td>
+                                <td class="py-2 font-medium">6308-2Z/C3</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2 text-gray-500 print:text-gray-800">Vòng bi sau (NDE)</td>
+                                <td class="py-2 font-medium">6208-2Z/C3</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Cột 2: Thông số kỹ thuật điện -->
+                <div>
+                    <h4 class="flex items-center text-hem-dark font-semibold border-b pb-2 mb-4 print:text-black print:border-gray-400">
+                        <i class="fa-solid fa-bolt w-6 print:hidden"></i> Thông số kỹ thuật Điện
+                    </h4>
+                    <table class="w-full text-sm text-left">
+                        <tbody>
+                            <tr class="border-b border-gray-100 print:border-gray-200">
+                                <td class="py-2 text-gray-500 w-2/5 print:text-gray-800">Công suất (Power)</td>
+                                <td class="py-2 font-medium">7.5 kW / 10 HP</td>
+                            </tr>
+                            <tr class="border-b border-gray-100 print:border-gray-200">
+                                <td class="py-2 text-gray-500 print:text-gray-800">Tốc độ (Speed)</td>
+                                <td class="py-2 font-medium">1450 rpm</td>
+                            </tr>
+                            <tr class="border-b border-gray-100 print:border-gray-200">
+                                <td class="py-2 text-gray-500 print:text-gray-800">Điện áp (Voltage)</td>
+                                <td class="py-2 font-medium">380 V (Δ)</td>
+                            </tr>
+                            <tr class="border-b border-gray-100 print:border-gray-200">
+                                <td class="py-2 text-gray-500 print:text-gray-800">Dòng điện (Amp)</td>
+                                <td class="py-2 font-medium">15.2 A</td>
+                            </tr>
+                            <tr class="border-b border-gray-100 print:border-gray-200">
+                                <td class="py-2 text-gray-500 print:text-gray-800">Tần số (Frequency)</td>
+                                <td class="py-2 font-medium">50 Hz</td>
+                            </tr>
+                            <tr class="border-b border-gray-100 print:border-gray-200">
+                                <td class="py-2 text-gray-500 print:text-gray-800">Hiệu suất (Efficiency)</td>
+                                <td class="py-2 font-medium">IE3 (90.4%)</td>
+                            </tr>
+                            <tr class="border-b border-gray-100 print:border-gray-200">
+                                <td class="py-2 text-gray-500 print:text-gray-800">Hệ số công suất (Cos φ)</td>
+                                <td class="py-2 font-medium">0.83</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2 text-gray-500 print:text-gray-800">Cấp cách điện (Ins. Class)</td>
+                                <td class="py-2 font-medium">Class F</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Đặc trưng loại động cơ (Tùy chọn bổ sung opt0 - opt9) -->
+            <div class="px-6 pb-6">
+                <h4 class="flex items-center text-hem-dark font-semibold border-b pb-2 mb-4 print:text-black print:border-gray-400">
+                    <i class="fa-solid fa-layer-group w-6 print:hidden"></i> Thông số đặc trưng
+                </h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-0 text-sm">
+                    <!-- Giả lập dữ liệu CSDL: "STATOR VOLTS/AMP: 220V/25A" -->
+                    <div class="flex border-b border-gray-100 py-2 print:border-gray-200 items-start">
+                        <span class="text-gray-500 w-2/5 print:text-gray-800 pr-2">STATOR VOLTS/AMP</span>
+                        <span class="font-medium flex-1">220V/25A</span>
+                    </div>
+                    <!-- Giả lập dữ liệu CSDL: "ROTOR VOLTS/AMP: 150V/10A" -->
+                    <div class="flex border-b border-gray-100 py-2 print:border-gray-200 items-start">
+                        <span class="text-gray-500 w-2/5 print:text-gray-800 pr-2">ROTOR VOLTS/AMP</span>
+                        <span class="font-medium flex-1">150V/10A</span>
+                    </div>
+                    <!-- Giả lập dữ liệu CSDL: "LỚP SƠN: Epoxy chống ăn mòn" -->
+                    <div class="flex border-b border-gray-100 py-2 print:border-gray-200 items-start">
+                        <span class="text-gray-500 w-2/5 print:text-gray-800 pr-2">LỚP SƠN</span>
+                        <span class="font-medium flex-1">Epoxy chống ăn mòn</span>
+                    </div>
+                    <!-- Giả lập dữ liệu CSDL: "CẢM BIẾN NHIỆT: PTC 150°C" -->
+                    <div class="flex border-b border-gray-100 py-2 print:border-gray-200 items-start">
+                        <span class="text-gray-500 w-2/5 print:text-gray-800 pr-2">CẢM BIẾN NHIỆT</span>
+                        <span class="font-medium flex-1">PTC 150°C</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer Action (Ẩn khi in ấn) -->
+            <div class="bg-gray-50 px-6 py-4 border-t border-gray-200 flex flex-col sm:flex-row justify-end gap-3 print:hidden">
+                <!-- Chức năng in sử dụng window.print() -->
+                <button onclick="window.print()" class="px-4 py-2 text-sm text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50 transition w-full sm:w-auto"><i class="fa-solid fa-print"></i> In tem / xuất PDF</button>
+                <a href="mailto:hotrokythuat@hem.com.vn" class="px-4 py-2 text-sm text-white bg-hem-blue rounded hover:bg-hem-dark transition w-full sm:w-auto flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-envelope"></i> Hỗ trợ kỹ thuật
+                </a>
+                <!-- Nút Hotline: Ẩn số trên mobile, hiện số trên màn hình sm trở lên -->
+                <a href="tel:0982853788" class="px-4 py-2 text-sm text-white bg-green-600 rounded hover:bg-green-700 transition w-full sm:w-auto flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-phone"></i> Hotline Kinh doanh<span class="hidden sm:inline">: 0982853788</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- QR Scanner Modal (Camera Thực tế) -->
+        <div id="qrModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 px-4">
+            <div class="bg-white rounded-lg p-4 w-full max-w-sm relative shadow-2xl">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold text-hem-dark"><i class="fa-solid fa-qrcode mr-2"></i>Quét Mã QR</h3>
+                    <button onclick="closeQRModal()" class="text-gray-500 hover:text-red-500 transition">
+                        <i class="fa-solid fa-xmark text-xl"></i>
+                    </button>
+                </div>
+                <!-- Camera View Area using html5-qrcode -->
+                <div id="reader" class="w-full bg-black rounded-lg overflow-hidden min-h-[250px] flex items-center justify-center">
+                    <!-- Khu vực này sẽ được thư viện tự động render -->
+                </div>
+                <div class="mt-4 text-center">
+                    <p class="text-xs text-gray-500">Đưa camera sát vào mã QR trên tem nhãn để hệ thống quét tự động.</p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Khối chân trang (Chứa Liên kết hữu ích và Copyright, luôn nằm dưới cùng) -->
+    <div class="mt-auto w-full print:hidden">
+        <!-- Các trang liên quan -->
+        <div class="border-t border-gray-200 pt-8 pb-8 max-w-5xl mx-auto px-4">
+            <h3 class="text-xl font-bold text-hem-dark mb-6 text-center">Liên kết hữu ích</h3>
+            <div class="flex flex-col md:flex-row justify-center items-center gap-4 md:gap-8 text-center">
+                <a href="#" class="text-hem-blue hover:text-hem-dark hover:underline flex items-center justify-center gap-2 transition font-medium">
+                    <i class="fa-solid fa-shield-halved text-gray-400"></i> Chính sách bảo hành
+                </a>
+                <span class="hidden md:block text-gray-300">|</span>
+                <a href="#" class="text-hem-blue hover:text-hem-dark hover:underline flex items-center justify-center gap-2 transition font-medium">
+                    <i class="fa-solid fa-magnifying-glass-chart text-gray-400"></i> Tra cứu và nhận biết sản phẩm chính hãng
+                </a>
+                <span class="hidden md:block text-gray-300">|</span>
+                <a href="#" class="text-hem-blue hover:text-hem-dark hover:underline flex items-center justify-center gap-2 transition font-medium">
+                    Thông tin liên hệ
+                </a>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="bg-hem-dark text-center py-5 text-gray-400 text-sm">
+            <p class="font-bold">© 2026 HEMEMM. All rights reserved.</p>
+        </footer>
+    </div>
+
+    <script>
+        let html5QrCode; // Biến toàn cục lưu trữ instance của bộ quét QR
+
+        function simulateSearch() {
+            const input = document.getElementById('searchInput').value;
+            const errorMsg = document.getElementById('errorMsg');
+            const resultCard = document.getElementById('resultCard');
+            const loading = document.getElementById('loading');
+
+            if (!input.trim()) {
+                errorMsg.classList.remove('hidden');
+                resultCard.classList.add('hidden');
+                return;
+            }
+
+            errorMsg.classList.add('hidden');
+            resultCard.classList.add('hidden');
+            loading.classList.remove('hidden');
+
+            // Giả lập gọi API (delay 1s)
+            setTimeout(() => {
+                loading.classList.add('hidden');
+                document.getElementById('res-sn').textContent = input.toUpperCase();
+                resultCard.classList.remove('hidden');
+            }, 1000);
+        }
+
+        // Thêm tính năng nhấn Enter để tìm kiếm
+        document.getElementById('searchInput').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                simulateSearch();
+            }
+        });
+
+        // --- Các hàm xử lý Camera quét mã QR thực tế ---
+        function openQRModal() {
+            document.getElementById('qrModal').classList.remove('hidden');
+            
+            // Khởi tạo Html5Qrcode nếu chưa có
+            if (!html5QrCode) {
+                html5QrCode = new Html5Qrcode("reader");
+            }
+            
+            // Cấu hình: tối ưu cho quét trên thiết bị di động (facingMode: environment -> Camera sau)
+            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+            
+            html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+            .catch(err => {
+                console.error("Lỗi khi mở camera: ", err);
+                alert("Không thể truy cập camera. Vui lòng kiểm tra quyền truy cập camera của trình duyệt.");
+            });
+        }
+
+        function onScanSuccess(decodedText, decodedResult) {
+            // Khi quét thành công, đóng modal và điền kết quả
+            closeQRModal();
+            document.getElementById('searchInput').value = decodedText;
+            simulateSearch(); // Tự động bắt đầu tìm kiếm
+        }
+
+        function closeQRModal() {
+            document.getElementById('qrModal').classList.add('hidden');
+            // Dừng camera khi đóng hộp thoại để tiết kiệm pin thiết bị
+            if (html5QrCode && html5QrCode.isScanning) {
+                html5QrCode.stop().then(ignore => {
+                    // Đã dừng camera
+                }).catch(err => {
+                    console.error("Lỗi khi dừng camera:", err);
+                });
+            }
+        }
+    </script>
+</body>
+</html>
