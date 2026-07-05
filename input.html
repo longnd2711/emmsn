@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="vi-VN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -55,6 +55,37 @@
             .no-print { display: none !important; }
         }
     </style>
+    <script>
+        // Hàm cố định nhập liệu chuẩn Việt Nam (Chỉ cho nhập số và 1 dấu phẩy)
+        function formatVNInput(e) {
+            let val = e.target.value;
+            // Loại bỏ ký tự không phải số và dấu phẩy
+            val = val.replace(/[^0-9,]/g, ''); 
+            // Đảm bảo chỉ có tối đa 1 dấu phẩy
+            const parts = val.split(',');
+            if (parts.length > 2) {
+                val = parts[0] + ',' + parts.slice(1).join('');
+            }
+            e.target.value = val;
+            
+            // Kích hoạt sự kiện input thủ công để tính toán HP nếu đang gõ ở ô kW
+            if(e.target.id === 'kw') {
+                e.target.dispatchEvent(new Event('customInput'));
+            }
+        }
+
+        // Hàm chuyển đổi Text (dấu phẩy) thành Float (dấu chấm) cho Database
+        function parseVNFloat(str) {
+            if (!str) return null;
+            return parseFloat(str.replace(',', '.'));
+        }
+
+        // Hàm chuyển đổi Float (dấu chấm) thành Text (dấu phẩy) cho hiển thị
+        function formatVNString(num) {
+            if (num === null || num === undefined || isNaN(num)) return '';
+            return num.toString().replace('.', ',');
+        }
+    </script>
 </head>
 <body class="bg-gray-100 text-gray-800 font-sans min-h-screen flex flex-col">
 
@@ -114,7 +145,7 @@
 
                         <div>
                             <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Loại động cơ (Type)</label>
-                            <input type="text" id="type" placeholder="VD: MS-5,5-4P-ST" required class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none">
+                            <input type="text" id="type" placeholder="VD: MS-5.5-4P-ST" required class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none">
                         </div>
 
                         <div>
@@ -148,7 +179,7 @@
                     <div class="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Khối lượng (kg)</label>
-                            <input type="number" id="weight_kg" step="0.1" placeholder="75" required class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none">
+                            <input type="text" id="weight_kg" inputmode="decimal" oninput="formatVNInput(event)" placeholder="75" required class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none">
                         </div>
 
                         <div>
@@ -165,7 +196,7 @@
                             <div>
                                 <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Kiểu lắp đặt (Duty)</label>
                                 <select id="duty_s" class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none bg-white">
-                                    <option value="S1 (Liên tục)" selected>S1 (Liên tục)</option>
+                                    <option value="S1" selected>S1 (Liên tục)</option>
                                     <option value="S2">S2</option>
                                     <option value="S3">S3</option>
                                 </select>
@@ -200,11 +231,11 @@
                     
                     <div>
                         <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Công suất (kW) *</label>
-                        <input type="number" id="kw" step="0.01" required class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none font-bold text-hem">
+                        <input type="text" id="kw" inputmode="decimal" oninput="formatVNInput(event)" placeholder="5,5" required class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none font-bold text-hem">
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Công suất (HP)</label>
-                        <input type="number" id="hp" readonly class="w-full border border-gray-300 rounded p-2.5 bg-gray-50 text-gray-500 outline-none cursor-not-allowed">
+                        <input type="text" id="hp" readonly class="w-full border border-gray-300 rounded p-2.5 bg-gray-50 text-gray-500 outline-none cursor-not-allowed">
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Số cực (Poles)</label>
@@ -245,14 +276,14 @@
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Dòng điện (Amp)</label>
-                        <input type="text" id="amp" placeholder="15,2" required class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none">
+                        <input type="text" id="amp" inputmode="decimal" oninput="formatVNInput(event)" placeholder="15,2" required class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none">
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Cấp cách điện</label>
                         <select id="ins_class" class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none bg-white">
-                            <option value="Class F" selected>Class F</option>
-                            <option value="Class H">Class H</option>
-                            <option value="Class B">Class B</option>
+                            <option value="F" selected>Class F</option>
+                            <option value="H">Class H</option>
+                            <option value="B">Class B</option>
                         </select>
                     </div>
 
@@ -267,11 +298,11 @@
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Hiệu suất (%)</label>
-                        <input type="number" id="efficiency_pct" step="0.1" placeholder="90,4" class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none">
+                        <input type="text" id="efficiency_pct" inputmode="decimal" oninput="formatVNInput(event)" placeholder="90,4" class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none">
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Hệ số Cos φ</label>
-                        <input type="number" id="cos_phi" step="0.01" placeholder="0,83" class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none">
+                        <input type="text" id="cos_phi" inputmode="decimal" oninput="formatVNInput(event)" placeholder="0,83" class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none">
                     </div>
                     
                 </div>
@@ -345,13 +376,14 @@
             // Lắng nghe thay đổi ngày SX để tính ngày bảo hành
             mfgDateInput.addEventListener('change', updateWarrantyDate);
 
-            // Tự động tính HP từ kW
+            // Tự động tính HP từ kW (hỗ trợ dấu phẩy)
             const kwInput = document.getElementById('kw');
             const hpInput = document.getElementById('hp');
-            kwInput.addEventListener('input', () => {
-                const kwVal = parseFloat(kwInput.value);
-                if (!isNaN(kwVal)) {
-                    hpInput.value = (kwVal * 1.34102).toFixed(2);
+            kwInput.addEventListener('customInput', () => {
+                const kwVal = parseVNFloat(kwInput.value);
+                if (kwVal && !isNaN(kwVal)) {
+                    // Tính toán và định dạng lại thành dấu phẩy
+                    hpInput.value = formatVNString((kwVal * 1.34102).toFixed(2));
                 } else {
                     hpInput.value = '';
                 }
@@ -381,7 +413,8 @@
                         else if (poles === 8) rpm = 860;
                         else rpm = Math.round((120 * hz / poles) * 0.965);
                     }
-                    rpmInput.value = rpm;
+                    // Định dạng dấu chấm cho hàng nghìn (VD: 1.450)
+                    rpmInput.value = rpm.toLocaleString('vi-VN');
                 }
             }
 
@@ -479,7 +512,7 @@
         function resetForm() {
             document.getElementById('motorForm').reset();
             updateWarrantyDate();
-            // Khôi phục lại HP vì reset form không kích hoạt sự kiện 'input' của kW
+            // Khôi phục lại HP
             document.getElementById('hp').value = '';
             // Khôi phục lại RPM
             document.getElementById('poles').dispatchEvent(new Event('change'));
@@ -497,22 +530,23 @@
 
             try {
                 // Map dữ liệu từ form sang schema của Supabase Table "motors"
+                // parseVNFloat sẽ chuyển dấu phẩy do người dùng gõ thành dấu chấm cho DB hiểu
                 const payload = {
                     type: document.getElementById('type').value,
                     manufacture_date: document.getElementById('manufacture_date').value,
                     serial_number: document.getElementById('serial_number').value,
                     warranty_expiration_date: document.getElementById('warranty_expiration_date').value,
-                    hp: parseFloat(document.getElementById('hp').value) || null,
-                    kw: parseFloat(document.getElementById('kw').value) || null,
-                    rpm: document.getElementById('rpm').value, // Schema báo là kiểu text
-                    weight_kg: parseFloat(document.getElementById('weight_kg').value) || null,
+                    hp: parseVNFloat(document.getElementById('hp').value),
+                    kw: parseVNFloat(document.getElementById('kw').value),
+                    rpm: document.getElementById('rpm').value.replace(/\./g, ''), // Gỡ dấu chấm hàng nghìn trước khi lưu DB nếu cần, hoặc lưu nguyên text
+                    weight_kg: parseVNFloat(document.getElementById('weight_kg').value),
                     conn_type: document.getElementById('conn_type').value,
                     volts: document.getElementById('volts').value,
-                    amp: document.getElementById('amp').value,
+                    amp: document.getElementById('amp').value, // Bảng DB lưu text nên truyền luôn cả dấu phẩy lên
                     hz: parseInt(document.getElementById('hz').value) || null,
                     ie_class: document.getElementById('ie_class').value,
-                    efficiency_pct: parseFloat(document.getElementById('efficiency_pct').value) || null,
-                    cos_phi: parseFloat(document.getElementById('cos_phi').value) || null,
+                    efficiency_pct: parseVNFloat(document.getElementById('efficiency_pct').value),
+                    cos_phi: parseVNFloat(document.getElementById('cos_phi').value),
                     duty_s: document.getElementById('duty_s').value,
                     ip_rating: document.getElementById('ip_rating').value,
                     ins_class: document.getElementById('ins_class').value,
@@ -567,6 +601,7 @@
         function preparePrintData() {
             document.getElementById('print-type').innerText = document.getElementById('type').value;
             document.getElementById('print-serial').innerText = document.getElementById('serial_number').value;
+            // Dữ liệu đã là dấu phẩy trên giao diện nên in ra giữ nguyên
             document.getElementById('print-kw').innerText = document.getElementById('kw').value;
             document.getElementById('print-hp').innerText = document.getElementById('hp').value;
             document.getElementById('print-volts').innerText = document.getElementById('volts').value;
