@@ -6,6 +6,7 @@
     <title>Nhập Liệu Động Cơ Mới | HEM</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -206,8 +207,21 @@
                         <input type="number" id="hp" readonly class="w-full border border-gray-300 rounded p-2.5 bg-gray-50 text-gray-500 outline-none cursor-not-allowed">
                     </div>
                     <div>
+                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Số cực (Poles)</label>
+                        <select id="poles" class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none bg-white">
+                            <option value="2">2P</option>
+                            <option value="4" selected>4P</option>
+                            <option value="6">6P</option>
+                            <option value="8">8P</option>
+                            <option value="10">10P</option>
+                            <option value="12">12P</option>
+                            <option value="14">14P</option>
+                            <option value="16">16P</option>
+                        </select>
+                    </div>
+                    <div>
                         <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Tốc độ (RPM)</label>
-                        <input type="number" id="rpm" placeholder="1450" required class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none">
+                        <input type="text" id="rpm" readonly class="w-full border border-gray-300 rounded p-2.5 bg-gray-50 text-gray-500 outline-none cursor-not-allowed" title="Tự động tính theo Số cực và Tần số">
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Tần số (Hz)</label>
@@ -314,6 +328,11 @@
 
     <!-- JavaScript -->
     <script>
+        // Khởi tạo Supabase client
+        const supabaseUrl = 'https://ajfcbgbvaltetzctcloz.supabase.co';
+        const supabaseKey = 'sb_publishable_nTbcJoFTUfECdxwHJgF3Fw_B8kVF9Nl';
+        const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+
         document.addEventListener('DOMContentLoaded', () => {
             // Khởi tạo ngày tháng mặc định
             const mfgDateInput = document.getElementById('manufacture_date');
@@ -337,6 +356,40 @@
                     hpInput.value = '';
                 }
             });
+
+            // Tự động tính Tốc độ (RPM) từ Số cực và Tần số
+            const polesInput = document.getElementById('poles');
+            const hzInput = document.getElementById('hz');
+            const rpmInput = document.getElementById('rpm');
+
+            function calculateRPM() {
+                const poles = parseInt(polesInput.value);
+                const hz = parseInt(hzInput.value);
+                if (poles && hz) {
+                    let rpm = 0;
+                    // Lấy giá trị tốc độ không đồng bộ (Asynchronous) phổ biến với độ trượt tiêu chuẩn
+                    if (hz === 50) {
+                        if (poles === 2) rpm = 2900;
+                        else if (poles === 4) rpm = 1450;
+                        else if (poles === 6) rpm = 960;
+                        else if (poles === 8) rpm = 720;
+                        else rpm = Math.round((120 * hz / poles) * 0.965);
+                    } else if (hz === 60) {
+                        if (poles === 2) rpm = 3500;
+                        else if (poles === 4) rpm = 1750;
+                        else if (poles === 6) rpm = 1150;
+                        else if (poles === 8) rpm = 860;
+                        else rpm = Math.round((120 * hz / poles) * 0.965);
+                    }
+                    rpmInput.value = rpm;
+                }
+            }
+
+            polesInput.addEventListener('change', calculateRPM);
+            hzInput.addEventListener('change', calculateRPM);
+            
+            // Khởi tạo giá trị RPM lần đầu
+            calculateRPM();
 
             // Khởi tạo 10 trường Options tĩnh
             initFixedOptions();
@@ -428,10 +481,12 @@
             updateWarrantyDate();
             // Khôi phục lại HP vì reset form không kích hoạt sự kiện 'input' của kW
             document.getElementById('hp').value = '';
+            // Khôi phục lại RPM
+            document.getElementById('poles').dispatchEvent(new Event('change'));
         }
 
-        // Giả lập lưu dữ liệu
-        function simulateSave(action) {
+        // Lưu dữ liệu thực tế vào Supabase
+        async function simulateSave(action) {
             const btnSave = document.getElementById('btnSaveAndContinue');
             const spinner = document.getElementById('saveSpinner');
 
@@ -440,7 +495,48 @@
             btnSave.classList.add('opacity-80', 'cursor-not-allowed');
             spinner.classList.remove('hidden');
 
-            setTimeout(() => {
+            try {
+                // Map dữ liệu từ form sang schema của Supabase Table "motors"
+                const payload = {
+                    type: document.getElementById('type').value,
+                    manufacture_date: document.getElementById('manufacture_date').value,
+                    serial_number: document.getElementById('serial_number').value,
+                    warranty_expiration_date: document.getElementById('warranty_expiration_date').value,
+                    hp: parseFloat(document.getElementById('hp').value) || null,
+                    kw: parseFloat(document.getElementById('kw').value) || null,
+                    rpm: document.getElementById('rpm').value, // Schema báo là kiểu text
+                    weight_kg: parseFloat(document.getElementById('weight_kg').value) || null,
+                    conn_type: document.getElementById('conn_type').value,
+                    volts: document.getElementById('volts').value,
+                    amp: document.getElementById('amp').value,
+                    hz: parseInt(document.getElementById('hz').value) || null,
+                    ie_class: document.getElementById('ie_class').value,
+                    efficiency_pct: parseFloat(document.getElementById('efficiency_pct').value) || null,
+                    cos_phi: parseFloat(document.getElementById('cos_phi').value) || null,
+                    duty_s: document.getElementById('duty_s').value,
+                    ip_rating: document.getElementById('ip_rating').value,
+                    ins_class: document.getElementById('ins_class').value,
+                    brg_de: document.getElementById('brg_de').value,
+                    brg_nde: document.getElementById('brg_nde').value,
+                    opt0: document.getElementById('opt_val_0').value || null,
+                    opt1: document.getElementById('opt_val_1').value || null,
+                    opt2: document.getElementById('opt_val_2').value || null,
+                    opt3: document.getElementById('opt_val_3').value || null,
+                    opt4: document.getElementById('opt_val_4').value || null,
+                    opt5: document.getElementById('opt_val_5').value || null,
+                    opt6: document.getElementById('opt_val_6').value || null,
+                    opt7: document.getElementById('opt_val_7').value || null,
+                    opt8: document.getElementById('opt_val_8').value || null,
+                    opt9: document.getElementById('opt_val_9').value || null
+                };
+
+                // Gửi request Insert vào bảng 'motors'
+                const { data, error } = await supabaseClient
+                    .from('motors')
+                    .insert([payload]);
+
+                if (error) throw error;
+
                 // Tắt Loading
                 btnSave.disabled = false;
                 btnSave.classList.remove('opacity-80', 'cursor-not-allowed');
@@ -456,8 +552,15 @@
                     serialInput.value = '';
                     serialInput.focus();
                 }
-
-            }, 800); // Giả lập mạng 0.8s
+            } catch (error) {
+                console.error("Lỗi Supabase:", error);
+                showToast('Có lỗi khi lưu: ' + error.message, 'warning');
+                
+                // Trả lại trạng thái nút bấm nếu có lỗi
+                btnSave.disabled = false;
+                btnSave.classList.remove('opacity-80', 'cursor-not-allowed');
+                spinner.classList.add('hidden');
+            }
         }
 
         // Chuẩn bị dữ liệu cho khung In
