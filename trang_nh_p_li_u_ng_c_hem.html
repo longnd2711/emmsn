@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nhập Liệu Động Cơ Mới | HEM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        hem: {
+                            DEFAULT: '#00529C',
+                            dark: '#003d75',
+                            light: '#e6f0fa'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Tùy chỉnh thanh cuộn */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* Animation cho Toast */
+        @keyframes slideInRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+        .toast-enter { animation: slideInRight 0.3s ease-out forwards; }
+        .toast-exit { animation: fadeOut 0.3s ease-in forwards; }
+
+        /* CSS dành riêng cho khi In (Chức năng In tem) */
+        @media print {
+            body * { visibility: hidden; }
+            #print-area, #print-area * { visibility: visible; }
+            #print-area {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                padding: 20px;
+            }
+            .no-print { display: none !important; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-hem text-white shadow-md sticky top-0 z-50 no-print">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <!-- Giả lập Logo -->
+                <div class="bg-white p-1 rounded shadow-inner flex items-center justify-center h-10 w-auto">
+                    <img src="https://hem.com.vn/wp-content/uploads/logo.png" alt="HEM Logo" class="h-full object-contain">
+                </div>
+                <h1 class="text-lg font-semibold hidden sm:block border-l pl-4 border-blue-400">HỆ THỐNG QUẢN LÝ SẢN XUẤT</h1>
+            </div>
+            <div class="flex items-center gap-3">
+                <input type="file" id="excelFileInput" class="hidden" accept=".xlsx, .xls, .csv">
+                <button onclick="document.getElementById('excelFileInput').click()" class="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded transition-colors text-sm font-medium flex items-center gap-2">
+                    <i class="fa-solid fa-file-excel"></i> <span class="hidden sm:inline">Import Excel</span>
+                </button>
+                <div class="h-8 w-8 rounded-full bg-white text-hem flex items-center justify-center font-bold text-sm">
+                    QC
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 no-print">
+        
+        <div class="flex justify-between items-end mb-6">
+            <div>
+                <h2 class="text-2xl font-bold text-gray-900">Nhập Liệu Động Cơ Mới</h2>
+            </div>
+        </div>
+
+        <form id="motorForm" class="space-y-6">
+            
+            <!-- Grid Layout cho 2 khu vực đầu -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                
+                <!-- Khu vực 1: Định danh -->
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                    <div class="bg-gray-50 px-5 py-3 border-b border-gray-200 flex items-center gap-2">
+                        <i class="fa-solid fa-qrcode text-hem"></i>
+                        <h3 class="font-semibold text-gray-700">Thông tin định danh</h3>
+                    </div>
+                    <div class="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="sm:col-span-2">
+                            <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Dòng sản phẩm (Series)</label>
+                            <select id="series_code" class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none bg-white">
+                                <option value="3KST">3KST (Động cơ KĐB 3 pha tiêu chuẩn)</option>
+                                <option value="3KHT">3KHT (Động cơ 3 pha hiệu suất cao)</option>
+                                <option value="3K2S">3K2S (Động cơ 3 pha 2 tốc độ)</option>
+                                <option value="4KST">4KST</option>
+                                <option value="1PST">1PST (Động cơ 1 pha)</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Loại động cơ (Type)</label>
+                            <input type="text" id="type" placeholder="VD: MS-5.5-4P-ST" required class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Số Serial</label>
+                            <div class="flex">
+                                <input type="text" id="serial_number" maxlength="15" placeholder="SDF..." required class="w-full border border-gray-300 rounded-l p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none font-mono uppercase">
+                                <button type="button" onclick="generateSerial()" class="bg-gray-100 border border-l-0 border-gray-300 rounded-r px-3 text-gray-600 hover:bg-gray-200 transition" title="Tạo mã tự động">
+                                    <i class="fa-solid fa-rotate-right"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Ngày xuất xưởng</label>
+                            <input type="date" id="manufacture_date" required class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Hạn bảo hành</label>
+                            <input type="date" id="warranty_expiration_date" required class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none bg-gray-50">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Khu vực 2: Cơ khí -->
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                    <div class="bg-gray-50 px-5 py-3 border-b border-gray-200 flex items-center gap-2">
+                        <i class="fa-solid fa-cogs text-hem"></i>
+                        <h3 class="font-semibold text-gray-700">Thông số Cơ khí</h3>
+                    </div>
+                    <div class="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Khối lượng (kg)</label>
+                            <input type="number" id="weight_kg" step="0.1" placeholder="75" required class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Cấp bảo vệ (IP)</label>
+                            <select id="ip_rating" class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none bg-white">
+                                <option value="IP55" selected>IP55</option>
+                                <option value="IP56">IP56</option>
+                                <option value="IP65">IP65</option>
+                                <option value="IP66">IP66</option>
+                            </select>
+                        </div>
+
+                        <div class="sm:col-span-2 grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Kiểu lắp đặt (Duty)</label>
+                                <select id="duty_s" class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none bg-white">
+                                    <option value="S1 (Liên tục)" selected>S1 (Liên tục)</option>
+                                    <option value="S2">S2</option>
+                                    <option value="S3">S3</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Lớp sơn</label>
+                                <input type="text" id="paint_class" placeholder="VD: Epoxy" class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Vòng bi trước (DE)</label>
+                            <input type="text" id="brg_de" placeholder="6308-2Z/C3" class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none uppercase font-mono">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Vòng bi sau (NDE)</label>
+                            <input type="text" id="brg_nde" placeholder="6208-2Z/C3" class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none uppercase font-mono">
+                        </div>
+                    </div>
+                </div>
+
+            </div> <!-- End Grid -->
+
+            <!-- Khu vực 3: Điện -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <div class="bg-gray-50 px-5 py-3 border-b border-gray-200 flex items-center gap-2">
+                    <i class="fa-solid fa-bolt text-hem"></i>
+                    <h3 class="font-semibold text-gray-700">Thông số kỹ thuật Điện</h3>
+                </div>
+                <div class="p-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Công suất (kW) *</label>
+                        <input type="number" id="kw" step="0.01" required class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none font-bold text-hem">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Công suất (HP)</label>
+                        <input type="number" id="hp" readonly class="w-full border border-gray-300 rounded p-2.5 bg-gray-50 text-gray-500 outline-none cursor-not-allowed">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Tốc độ (RPM)</label>
+                        <input type="number" id="rpm" placeholder="1450" required class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Tần số (Hz)</label>
+                        <select id="hz" class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none bg-white">
+                            <option value="50" selected>50 Hz</option>
+                            <option value="60">60 Hz</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Điện áp (V)</label>
+                        <input type="text" id="volts" placeholder="380" required class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Kiểu đấu nối</label>
+                        <select id="conn_type" class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none bg-white">
+                            <option value="Δ">Tam giác (Δ)</option>
+                            <option value="Y">Sao (Y)</option>
+                            <option value="Y/Δ">Sao/Tam giác (Y/Δ)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Dòng điện (Amp)</label>
+                        <input type="text" id="amp" placeholder="15.2" required class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Cấp cách điện</label>
+                        <select id="ins_class" class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none bg-white">
+                            <option value="Class F" selected>Class F</option>
+                            <option value="Class H">Class H</option>
+                            <option value="Class B">Class B</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Chuẩn Hiệu suất</label>
+                        <select id="ie_class" class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none bg-white">
+                            <option value="IE1">IE1</option>
+                            <option value="IE2">IE2</option>
+                            <option value="IE3" selected>IE3 (Premium)</option>
+                            <option value="IE4">IE4</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Hiệu suất (%)</label>
+                        <input type="number" id="efficiency_pct" step="0.1" placeholder="90.4" class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Hệ số Cos φ</label>
+                        <input type="number" id="cos_phi" step="0.01" placeholder="0.83" class="w-full border border-gray-300 rounded p-2.5 focus:ring-2 focus:ring-hem focus:border-hem outline-none">
+                    </div>
+                    
+                </div>
+            </div>
+
+            <!-- Khu vực 4: Tùy chọn (Options) -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <div class="bg-gray-50 px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-list-check text-hem"></i>
+                        <h3 class="font-semibold text-gray-700">Thông số đặc trưng (Tùy chọn)</h3>
+                    </div>
+                </div>
+                <div class="p-5">
+                    <div id="optionsContainer" class="space-y-3">
+                        <!-- Các dòng option sẽ được chèn vào đây bằng JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer Actions -->
+            <div class="flex items-center justify-end gap-4 pt-4 border-t border-gray-200 pb-10">
+                <button type="button" id="btnReset" class="px-5 py-2.5 bg-gray-200 text-gray-700 rounded font-medium hover:bg-gray-300 transition flex items-center gap-2">
+                    <i class="fa-solid fa-rotate-left"></i> Làm mới
+                </button>
+                <button type="button" id="btnSaveAndReset" class="px-6 py-2.5 bg-green-600 text-white rounded font-medium hover:bg-green-700 transition shadow-sm flex items-center gap-2">
+                    <i class="fa-solid fa-check-double"></i> Lưu & Làm mới
+                </button>
+                <button type="submit" id="btnSaveAndContinue" class="px-8 py-2.5 bg-hem text-white rounded font-medium hover:bg-hem-dark transition shadow-sm flex items-center gap-2 min-w-[170px] justify-center">
+                    <span>Lưu & Tiếp tục</span>
+                    <i class="fa-solid fa-spinner fa-spin hidden" id="saveSpinner"></i>
+                </button>
+            </div>
+        </form>
+    </main>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-3"></div>
+
+    <!-- Khu vực ẩn dùng để in Tem -->
+    <div id="print-area" class="hidden bg-white text-black p-4 border-2 border-black w-[400px]">
+        <div class="text-center font-bold text-lg mb-2 border-b-2 border-black pb-2">ĐỘNG CƠ ĐIỆN HEM</div>
+        <table class="w-full text-sm">
+            <tr><td class="font-bold w-1/3">Type:</td><td id="print-type" class="uppercase"></td></tr>
+            <tr><td class="font-bold">Serial:</td><td id="print-serial" class="uppercase"></td></tr>
+            <tr><td class="font-bold">Công suất:</td><td><span id="print-kw"></span> kW / <span id="print-hp"></span> HP</td></tr>
+            <tr><td class="font-bold">Điện áp:</td><td><span id="print-volts"></span>V (<span id="print-conn"></span>)</td></tr>
+            <tr><td class="font-bold">Tốc độ:</td><td id="print-rpm"></td></tr>
+            <tr><td class="font-bold">Khối lượng:</td><td><span id="print-weight"></span> kg</td></tr>
+            <tr><td class="font-bold">Ngày SX:</td><td id="print-date"></td></tr>
+        </table>
+        <div class="mt-4 text-center text-xs">Quét QR để xem chi tiết & bảo hành</div>
+    </div>
+
+    <!-- JavaScript -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Khởi tạo ngày tháng mặc định
+            const mfgDateInput = document.getElementById('manufacture_date');
+            const warrantyDateInput = document.getElementById('warranty_expiration_date');
+            
+            const today = new Date();
+            mfgDateInput.value = today.toISOString().split('T')[0];
+            updateWarrantyDate();
+
+            // Lắng nghe thay đổi ngày SX để tính ngày bảo hành
+            mfgDateInput.addEventListener('change', updateWarrantyDate);
+
+            // Tự động tính HP từ kW
+            const kwInput = document.getElementById('kw');
+            const hpInput = document.getElementById('hp');
+            kwInput.addEventListener('input', () => {
+                const kwVal = parseFloat(kwInput.value);
+                if (!isNaN(kwVal)) {
+                    hpInput.value = (kwVal * 1.34102).toFixed(2);
+                } else {
+                    hpInput.value = '';
+                }
+            });
+
+            // Khởi tạo 10 trường Options tĩnh
+            initFixedOptions();
+
+            // Xử lý nút Làm mới
+            document.getElementById('btnReset').addEventListener('click', function() {
+                resetForm();
+            });
+
+            // Xử lý nút Lưu & Làm mới
+            document.getElementById('btnSaveAndReset').addEventListener('click', function() {
+                if(document.getElementById('motorForm').reportValidity()){
+                    simulateSave('reset');
+                }
+            });
+
+            // Xử lý Form Submit (Lưu & Tiếp tục)
+            document.getElementById('motorForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                simulateSave('continue');
+            });
+            
+            // Xử lý file excel input
+            document.getElementById('excelFileInput').addEventListener('change', function(e) {
+                if(this.files.length > 0) {
+                    showToast(`Đã chọn file: ${this.files[0].name}. Đang xử lý...`, 'info');
+                    // Reset input
+                    setTimeout(() => {
+                        this.value = '';
+                        showToast('Import dữ liệu thành công!', 'success');
+                    }, 1500);
+                }
+            });
+        });
+
+        function updateWarrantyDate() {
+            const mfgDate = new Date(document.getElementById('manufacture_date').value);
+            if (!isNaN(mfgDate.getTime())) {
+                const warrantyDate = new Date(mfgDate);
+                warrantyDate.setFullYear(warrantyDate.getFullYear() + 2); // Cộng 2 năm
+                document.getElementById('warranty_expiration_date').value = warrantyDate.toISOString().split('T')[0];
+            }
+        }
+
+        function generateSerial() {
+            const prefix = "HEM";
+            const date = new Date();
+            const yearMonth = `${date.getFullYear().toString().slice(-2)}${(date.getMonth()+1).toString().padStart(2, '0')}`;
+            const random = Math.floor(1000 + Math.random() * 9000); // 4 số ngẫu nhiên
+            document.getElementById('serial_number').value = `${prefix}${yearMonth}${random}`;
+        }
+
+        // Khởi tạo 10 trường tùy chỉnh cố định
+        function initFixedOptions() {
+            const defaultOptions = [
+                { label: 'IEC', value: '' },
+                { label: 'Ikd/Iđm', value: '' },
+                { label: 'Exdl', value: '' },
+                { label: '°C', value: '' },
+                { label: 'STATOR VOLTS/AMP', value: '' },
+                { label: 'ROTOR VOLTS/AMP', value: '' },
+                { label: 'CAP STA (µF/Vac)', value: '' },
+                { label: 'CAP RUN (µF/Vac)', value: '' },
+                { label: '', value: '' },
+                { label: '', value: '' }
+            ];
+
+            const container = document.getElementById('optionsContainer');
+            container.innerHTML = '';
+            
+            defaultOptions.forEach((opt, index) => {
+                container.innerHTML += `
+                    <div class="flex items-center gap-3 bg-white p-2 rounded border border-gray-100 shadow-sm">
+                        <div class="flex-grow grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <input type="text" id="opt_label_${index}" placeholder="Tên thông số" value="${opt.label}" class="w-full border-b border-gray-300 px-2 py-1.5 focus:border-hem outline-none text-sm uppercase text-gray-700 font-medium ${opt.label ? 'bg-gray-50' : 'bg-white'}">
+                            </div>
+                            <div>
+                                <input type="text" id="opt_val_${index}" placeholder="Giá trị" value="${opt.value}" class="w-full border-b border-gray-300 px-2 py-1.5 focus:border-hem outline-none text-sm">
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function resetForm() {
+            document.getElementById('motorForm').reset();
+            updateWarrantyDate();
+            // Khôi phục lại HP vì reset form không kích hoạt sự kiện 'input' của kW
+            document.getElementById('hp').value = '';
+        }
+
+        // Giả lập lưu dữ liệu
+        function simulateSave(action) {
+            const btnSave = document.getElementById('btnSaveAndContinue');
+            const spinner = document.getElementById('saveSpinner');
+
+            // Trạng thái Loading
+            btnSave.disabled = true;
+            btnSave.classList.add('opacity-80', 'cursor-not-allowed');
+            spinner.classList.remove('hidden');
+
+            setTimeout(() => {
+                // Tắt Loading
+                btnSave.disabled = false;
+                btnSave.classList.remove('opacity-80', 'cursor-not-allowed');
+                spinner.classList.add('hidden');
+
+                showToast('Lưu dữ liệu động cơ thành công!', 'success');
+
+                if (action === 'reset') {
+                    resetForm();
+                } else if (action === 'continue') {
+                    // Xóa mã serial để nhập máy tiếp theo, focus vào ô serial
+                    const serialInput = document.getElementById('serial_number');
+                    serialInput.value = '';
+                    serialInput.focus();
+                }
+
+            }, 800); // Giả lập mạng 0.8s
+        }
+
+        // Chuẩn bị dữ liệu cho khung In
+        function preparePrintData() {
+            document.getElementById('print-type').innerText = document.getElementById('type').value;
+            document.getElementById('print-serial').innerText = document.getElementById('serial_number').value;
+            document.getElementById('print-kw').innerText = document.getElementById('kw').value;
+            document.getElementById('print-hp').innerText = document.getElementById('hp').value;
+            document.getElementById('print-volts').innerText = document.getElementById('volts').value;
+            document.getElementById('print-conn').innerText = document.getElementById('conn_type').value;
+            document.getElementById('print-rpm').innerText = document.getElementById('rpm').value + ' v/p';
+            document.getElementById('print-weight').innerText = document.getElementById('weight_kg').value;
+            
+            // Format ngày tháng in
+            const d = new Date(document.getElementById('manufacture_date').value);
+            document.getElementById('print-date').innerText = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth()+1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+        }
+
+        // Hàm hiển thị Toast Notification
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            
+            const toast = document.createElement('div');
+            toast.className = `toast-enter flex items-center gap-3 px-4 py-3 rounded shadow-lg text-white font-medium min-w-[250px]`;
+            
+            let icon = '';
+            if (type === 'success') {
+                toast.classList.add('bg-green-600');
+                icon = '<i class="fa-solid fa-circle-check text-xl"></i>';
+            } else if (type === 'warning') {
+                toast.classList.add('bg-orange-500');
+                icon = '<i class="fa-solid fa-triangle-exclamation text-xl"></i>';
+            } else if (type === 'info') {
+                toast.classList.add('bg-blue-500');
+                icon = '<i class="fa-solid fa-circle-info text-xl"></i>';
+            }
+
+            toast.innerHTML = `
+                ${icon}
+                <span>${message}</span>
+            `;
+
+            container.appendChild(toast);
+
+            // Tự động ẩn sau 3 giây
+            setTimeout(() => {
+                toast.classList.replace('toast-enter', 'toast-exit');
+                setTimeout(() => toast.remove(), 300); // Đợi animation kết thúc
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
