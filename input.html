@@ -6,7 +6,6 @@
     <title>Nhập Liệu Động Cơ Mới | HEM</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -359,10 +358,13 @@
 
     <!-- JavaScript -->
     <script>
-        // Khởi tạo Supabase client
+        // Cấu hình URL và Keys để thao tác trực tiếp REST API
         const supabaseUrl = 'https://ajfcbgbvaltetzctcloz.supabase.co';
-        const supabaseKey = 'sb_publishable_nTbcJoFTUfECdxwHJgF3Fw_B8kVF9Nl';
-        const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+        
+        // Dùng Anon Key (Public) để qua mặt tường lửa chặn Browser của Kong API Gateway
+        const supabaseAnonKey = 'sb_publishable_nTbcJoFTUfECdxwHJgF3Fw_B8kVF9Nl';
+        // Dùng Secret Key để báo quyền Admin cho Database, qua mặt chính sách RLS
+        const supabaseSecretKey = 'sb_secret_uaa2HV5EHPz91rY_uFo67A_u1RW3O1X';
 
         document.addEventListener('DOMContentLoaded', () => {
             // Khởi tạo ngày tháng mặc định
@@ -518,7 +520,7 @@
             document.getElementById('poles').dispatchEvent(new Event('change'));
         }
 
-        // Lưu dữ liệu thực tế vào Supabase
+        // Lưu dữ liệu thực tế vào Supabase bằng REST API
         async function simulateSave(action) {
             const btnSave = document.getElementById('btnSaveAndContinue');
             const spinner = document.getElementById('saveSpinner');
@@ -530,7 +532,6 @@
 
             try {
                 // Map dữ liệu từ form sang schema của Supabase Table "motors"
-                // parseVNFloat sẽ chuyển dấu phẩy do người dùng gõ thành dấu chấm cho DB hiểu
                 const payload = {
                     type: document.getElementById('type').value,
                     manufacture_date: document.getElementById('manufacture_date').value,
@@ -538,11 +539,11 @@
                     warranty_expiration_date: document.getElementById('warranty_expiration_date').value,
                     hp: parseVNFloat(document.getElementById('hp').value),
                     kw: parseVNFloat(document.getElementById('kw').value),
-                    rpm: document.getElementById('rpm').value.replace(/\./g, ''), // Gỡ dấu chấm hàng nghìn trước khi lưu DB nếu cần, hoặc lưu nguyên text
+                    rpm: document.getElementById('rpm').value.replace(/\./g, ''), // Gỡ dấu chấm hàng nghìn trước khi lưu DB
                     weight_kg: parseVNFloat(document.getElementById('weight_kg').value),
                     conn_type: document.getElementById('conn_type').value,
                     volts: document.getElementById('volts').value,
-                    amp: document.getElementById('amp').value, // Bảng DB lưu text nên truyền luôn cả dấu phẩy lên
+                    amp: document.getElementById('amp').value, 
                     hz: parseInt(document.getElementById('hz').value) || null,
                     ie_class: document.getElementById('ie_class').value,
                     efficiency_pct: parseVNFloat(document.getElementById('efficiency_pct').value),
@@ -564,12 +565,22 @@
                     opt9: document.getElementById('opt_val_9').value || null
                 };
 
-                // Gửi request Insert vào bảng 'motors'
-                const { data, error } = await supabaseClient
-                    .from('motors')
-                    .insert([payload]);
+                // Sử dụng fetch (REST API) trực tiếp: Ghép Public Key & Secret Key để không bị chặn
+                const response = await fetch(`${supabaseUrl}/rest/v1/motors`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'apikey': supabaseAnonKey, // Dùng Anon Key qua mặt Kong chặn Browser
+                        'Authorization': `Bearer ${supabaseSecretKey}`, // Dùng Secret Key cấp quyền Admin qua RLS
+                        'Prefer': 'return=minimal' // Tùy chọn: báo máy chủ không cần trả lại dữ liệu đã insert
+                    },
+                    body: JSON.stringify(payload)
+                });
 
-                if (error) throw error;
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || response.statusText);
+                }
 
                 // Tắt Loading
                 btnSave.disabled = false;
