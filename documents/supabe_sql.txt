@@ -1,0 +1,410 @@
+-- file01 khoi tao cac bang nghiep vu va lich su
+
+-- ==============================================================================
+-- BƯỚC 1: KHỞI TẠO ENUMs VÀ HÀM TIỆN ÍCH
+-- ==============================================================================
+
+-- 1. Tạo các kiểu dữ liệu ENUM để chuẩn hóa trạng thái và phân loại
+-- Lưu ý: Supabase mặc định sử dụng schema 'public'
+
+-- ENUM cho trạng thái của động cơ (motor)
+CREATE TYPE public.motor_status AS ENUM (
+    'in_stock',     -- Trong kho nhà máy
+    'distributed',  -- Đã giao cho đại lý
+    'sold',         -- Đã bán cho khách hàng
+    'registered'    -- Đã kích hoạt bảo hành
+);
+
+-- ENUM cho phân loại khách hàng
+CREATE TYPE public.customer_type AS ENUM (
+    'dealer',       -- Đại lý phân phối
+    'corporate',    -- Khách hàng doanh nghiệp (B2B)
+    'retail'        -- Khách hàng mua lẻ (B2C)
+);
+
+-- ENUM cho trạng thái xét duyệt đăng ký bảo hành
+CREATE TYPE public.registration_status AS ENUM (
+    'pending',      -- Chờ duyệt (Mặc định khi khách đăng ký mới)
+    'approved',     -- Đã xác nhận
+    'rejected'      -- Bị từ chối
+);
+
+-- ENUM cho phân quyền nhân viên nội bộ
+CREATE TYPE public.role_type AS ENUM (
+    'admin',        -- Quản trị viên hệ thống
+    'staff',        -- Nhân viên kinh doanh / CSKH
+    'technician'    -- Kỹ thuật viên / Bảo hành
+);
+
+-- 2. Tạo hàm tiện ích (Utility Function)
+-- Hàm này sẽ được dùng làm Trigger để tự động cập nhật cột 'updated_at' mỗi khi có dòng dữ liệu bị chỉnh sửa.
+CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Gán giá trị thời gian hiện tại của hệ thống cho cột updated_at
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- file02 khoi tao cac bang cot loi
+-- ==============================================================================
+-- BƯỚC 2: KHỞI TẠO CÁC BẢNG CORE (DANH MỤC CỐT LÕI)
+-- ==============================================================================
+
+-- 1. Bảng product_types (Danh mục Dòng máy & Thông số kỹ thuật)
+CREATE TABLE public.product_types (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    model_code VARCHAR(50) NOT NULL UNIQUE, -- Mã dòng máy (VD: MOT-1001), không được trùng
+    name VARCHAR(255) NOT NULL,             -- Tên dòng máy
+    warranty_months INT NOT NULL DEFAULT 12, -- Số tháng bảo hành mặc định
+    specifications JSONB DEFAULT '{}'::jsonb, -- Cấu hình lưu dạng JSON (linh hoạt cho nhiều thông số)
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2. Bảng customers (Thông tin Khách hàng / Đại lý)
+CREATE TABLE public.customers (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    customer_type public.customer_type NOT NULL DEFAULT 'retail', -- Loại khách hàng (dùng ENUM Bước 1)
+    full_name VARCHAR(255) NOT NULL,
+    phone VARCHAR(20) NOT NULL UNIQUE,        -- Số điện thoại là định danh duy nhất
+    email VARCHAR(255),
+    address TEXT,
+    company_name VARCHAR(255),                -- Dành cho khách hàng doanh nghiệp hoặc đại lý
+    tax_code VARCHAR(50),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. Bảng users (Tài khoản nhân viên nội bộ)
+-- Lưu ý quan trọng: Khóa chính id sẽ liên kết trực tiếp với bảng auth.users của Supabase
+CREATE TABLE public.users (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    employee_id VARCHAR(50) NOT NULL UNIQUE,  -- Mã nhân viên
+    full_name VARCHAR(255) NOT NULL,
+    phone VARCHAR(20),
+    role public.role_type NOT NULL DEFAULT 'staff', -- Phân quyền (dùng ENUM Bước 1)
+    is_active BOOLEAN NOT NULL DEFAULT true,  -- Trạng thái làm việc
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ==============================================================================
+-- GẮN TRIGGER TỰ ĐỘNG CẬP NHẬT TRƯỜNG `updated_at` CHO CÁC BẢNG TRÊN
+-- ==============================================================================
+
+CREATE TRIGGER update_product_types_updated_at
+BEFORE UPDATE ON public.product_types
+FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+CREATE TRIGGER update_customers_updated_at
+BEFORE UPDATE ON public.customers
+FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+CREATE TRIGGER update_users_updated_at
+BEFORE UPDATE ON public.users
+FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+-- file03 khoi tao cac bang nghiep vu va lich su
+-- ==============================================================================
+-- BƯỚC 3: KHỞI TẠO CÁC BẢNG NGHIỆP VỤ VÀ LỊCH SỬ
+-- ==============================================================================
+
+-- 1. Bảng motors (Danh sách máy vật lý từng được sản xuất)
+CREATE TABLE public.motors (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    serial_number VARCHAR(100) NOT NULL UNIQUE,   -- Số IMEI/Serial trên máy, dùng để tạo QR code
+    product_type_id UUID NOT NULL REFERENCES public.product_types(id) ON DELETE RESTRICT,
+    manufacture_date DATE NOT NULL,
+    status public.motor_status NOT NULL DEFAULT 'in_stock',
+    warranty_expiry_date DATE,                    -- Ngày hết hạn BH (Nhập tay hoặc trigger tự tính)
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2. Bảng registrations (Lịch sử/Phiếu đăng ký bảo hành)
+CREATE TABLE public.registrations (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    motor_id UUID NOT NULL REFERENCES public.motors(id) ON DELETE CASCADE,
+    customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE RESTRICT,
+    dealer_id UUID REFERENCES public.customers(id) ON DELETE SET NULL, -- Đại lý phân phối (có thể null nếu khách mua trực tiếp)
+    purchase_date DATE NOT NULL,
+    registered_at TIMESTAMPTZ DEFAULT NOW(),
+    warranty_end DATE,
+    status public.registration_status NOT NULL DEFAULT 'pending',
+    is_active BOOLEAN NOT NULL DEFAULT false,     -- Bản ghi có đang là chủ sở hữu hiện tại không?
+    verified_by UUID REFERENCES public.users(id) ON DELETE SET NULL, -- KTV xác thực chuyển quyền
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Ràng buộc quan trọng: Chỉ cho phép 1 bản ghi is_active = true cho mỗi máy (motor_id)
+CREATE UNIQUE INDEX unique_active_registration ON public.registrations(motor_id) WHERE is_active = true;
+
+
+-- 3. Bảng maintenance_logs (Lịch sử bảo trì, sửa chữa)
+CREATE TABLE public.maintenance_logs (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    motor_id UUID NOT NULL REFERENCES public.motors(id) ON DELETE CASCADE,
+    service_type VARCHAR(100) NOT NULL,           -- Phân loại: Bảo dưỡng định kỳ, Sửa chữa sự cố...
+    service_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    technician_name VARCHAR(255),                 -- Có thể nhập tay tên thợ ngoài hoặc link hệ thống
+    description TEXT,                             -- Mô tả chi tiết lỗi và linh kiện thay thế
+    next_due_date DATE,                           -- Ngày bảo dưỡng tiếp theo (nếu có)
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. Bảng scan_logs (Lịch sử quét QR code tracking GPS)
+-- Bảng này chỉ lưu dữ liệu dạng Log (Append-only), không cần updated_at
+CREATE TABLE public.scan_logs (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    motor_id UUID NOT NULL REFERENCES public.motors(id) ON DELETE CASCADE,
+    scanned_at TIMESTAMPTZ DEFAULT NOW(),
+    latitude NUMERIC(10, 8),                      -- Vĩ độ GPS
+    longitude NUMERIC(11, 8),                     -- Kinh độ GPS
+    scanned_by UUID REFERENCES public.customers(id) ON DELETE SET NULL, -- Người dùng quét (nếu họ đã đăng nhập)
+    device_info TEXT                              -- Trình duyệt, hệ điều hành thiết bị quét
+);
+
+-- 5. Bảng audit_logs (Nhật ký thay đổi dữ liệu toàn hệ thống)
+-- Bảng này để lưu vết bảo mật (Append-only)
+CREATE TABLE public.audit_logs (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES public.users(id) ON DELETE SET NULL, -- Ai đã thao tác?
+    action VARCHAR(20) NOT NULL,                  -- INSERT, UPDATE, DELETE
+    table_name VARCHAR(50) NOT NULL,              -- Tên bảng bị tác động
+    record_id UUID NOT NULL,                      -- ID của bản ghi bị tác động
+    old_values JSONB,                             -- Dữ liệu cũ (trước khi sửa/xóa)
+    new_values JSONB,                             -- Dữ liệu mới (sau khi thêm/sửa)
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ==============================================================================
+-- GẮN TRIGGER TỰ ĐỘNG CẬP NHẬT TRƯỜNG `updated_at` (Chỉ cho bảng có thể UPDATE)
+-- ==============================================================================
+
+CREATE TRIGGER update_motors_updated_at
+BEFORE UPDATE ON public.motors
+FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+CREATE TRIGGER update_registrations_updated_at
+BEFORE UPDATE ON public.registrations
+FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+CREATE TRIGGER update_maintenance_logs_updated_at
+BEFORE UPDATE ON public.maintenance_logs
+FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+-- file04 thiet lap trigger va xu ly logic nghiep vu
+
+-- ==============================================================================
+-- BƯỚC 4: THIẾT LẬP HÀM VÀ TRIGGER XỬ LÝ LOGIC NGHIỆP VỤ
+-- ==============================================================================
+
+-- ------------------------------------------------------------------------------
+-- TRIGGER 1: Tự động tính ngày hết hạn bảo hành cho máy (motors)
+-- Logic: Nếu 'warranty_expiry_date' trống, lấy 'manufacture_date' + 'warranty_months' (từ product_types)
+-- ------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.calculate_warranty_expiry()
+RETURNS TRIGGER AS $$
+DECLARE
+    w_months INT;
+BEGIN
+    -- Chỉ tính toán khi giá trị hết hạn bị bỏ trống
+    IF NEW.warranty_expiry_date IS NULL THEN
+        -- Truy xuất số tháng bảo hành từ bảng product_types
+        SELECT warranty_months INTO w_months
+        FROM public.product_types
+        WHERE id = NEW.product_type_id;
+
+        -- Nếu tìm thấy, cộng số tháng vào ngày sản xuất
+        IF FOUND THEN
+            NEW.warranty_expiry_date := NEW.manufacture_date + (w_months || ' months')::INTERVAL;
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_calculate_warranty
+BEFORE INSERT OR UPDATE ON public.motors
+FOR EACH ROW EXECUTE FUNCTION public.calculate_warranty_expiry();
+
+
+-- ------------------------------------------------------------------------------
+-- TRIGGER 2: Xử lý logic Chuyển đổi Chủ Sở Hữu (registrations)
+-- Logic: Khi một đăng ký được duyệt (pending -> approved), nó trở thành Active.
+-- Các đăng ký cũ của máy đó sẽ bị hủy Active. Đồng thời đổi trạng thái motor thành 'registered'.
+-- ------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.handle_registration_approval()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Bắt sự kiện khi trạng thái được nhân viên cập nhật thành 'approved'
+    IF OLD.status IS DISTINCT FROM 'approved' AND NEW.status = 'approved' THEN
+
+        -- 1. Hủy kích hoạt TẤT CẢ các hồ sơ đăng ký khác của cùng máy này
+        UPDATE public.registrations
+        SET is_active = false
+        WHERE motor_id = NEW.motor_id AND id != NEW.id;
+
+        -- 2. Đặt hồ sơ hiện tại thành Active
+        NEW.is_active := true;
+
+        -- 3. Cập nhật trạng thái của máy vật lý thành "Đã đăng ký"
+        UPDATE public.motors
+        SET status = 'registered'
+        WHERE id = NEW.motor_id;
+
+    -- Nếu bị từ chối, đảm bảo không được active
+    ELSIF NEW.status = 'rejected' THEN
+        NEW.is_active := false;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_registration_approval
+BEFORE UPDATE ON public.registrations
+FOR EACH ROW EXECUTE FUNCTION public.handle_registration_approval();
+
+
+-- ------------------------------------------------------------------------------
+-- TRIGGER 3: Tự động ghi nhật ký hệ thống (Audit Logs)
+-- Logic: Lắng nghe INSERT, UPDATE, DELETE và lưu vào bảng audit_logs.
+-- ------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.log_audit_event()
+RETURNS TRIGGER AS $$
+DECLARE
+    current_user_id UUID;
+    row_record_id UUID;
+BEGIN
+    -- Lấy ID của người dùng đang thao tác từ Supabase Auth Context (Nếu thao tác từ Frontend)
+    current_user_id := auth.uid();
+
+    IF TG_OP = 'INSERT' THEN
+        row_record_id := NEW.id;
+        INSERT INTO public.audit_logs (user_id, action, table_name, record_id, old_values, new_values)
+        VALUES (current_user_id, TG_OP, TG_TABLE_NAME, row_record_id, NULL, row_to_json(NEW)::jsonb);
+        RETURN NEW;
+
+    ELSIF TG_OP = 'UPDATE' THEN
+        row_record_id := NEW.id;
+        INSERT INTO public.audit_logs (user_id, action, table_name, record_id, old_values, new_values)
+        VALUES (current_user_id, TG_OP, TG_TABLE_NAME, row_record_id, row_to_json(OLD)::jsonb, row_to_json(NEW)::jsonb);
+        RETURN NEW;
+
+    ELSIF TG_OP = 'DELETE' THEN
+        row_record_id := OLD.id;
+        INSERT INTO public.audit_logs (user_id, action, table_name, record_id, old_values, new_values)
+        VALUES (current_user_id, TG_OP, TG_TABLE_NAME, row_record_id, row_to_json(OLD)::jsonb, NULL);
+        RETURN OLD;
+    END IF;
+
+    RETURN NULL;
+END;
+-- SECURITY DEFINER cho phép trigger này lọt qua các rào cản RLS để luôn ghi được log
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Gắn Audit Trigger vào các bảng quan trọng
+CREATE TRIGGER audit_product_types_changes
+AFTER INSERT OR UPDATE OR DELETE ON public.product_types
+FOR EACH ROW EXECUTE FUNCTION public.log_audit_event();
+
+CREATE TRIGGER audit_motors_changes
+AFTER INSERT OR UPDATE OR DELETE ON public.motors
+FOR EACH ROW EXECUTE FUNCTION public.log_audit_event();
+
+CREATE TRIGGER audit_registrations_changes
+AFTER INSERT OR UPDATE OR DELETE ON public.registrations
+FOR EACH ROW EXECUTE FUNCTION public.log_audit_event();
+
+-- file05 thiet lap bao mat RLS
+-- ==============================================================================
+-- BƯỚC 5: THIẾT LẬP BẢO MẬT ROW LEVEL SECURITY (RLS)
+-- ==============================================================================
+
+-- 1. Bật tính năng RLS cho tất cả các bảng
+ALTER TABLE public.product_types ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.motors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.registrations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.maintenance_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.scan_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+
+-- 2. Tạo hàm hỗ trợ lấy Role của nhân viên đang đăng nhập
+-- Hàm này có SECURITY DEFINER để nó có thể lướt qua RLS và đọc bảng users
+CREATE OR REPLACE FUNCTION public.get_current_user_role()
+RETURNS text AS $$
+    SELECT role::text FROM public.users WHERE id = auth.uid();
+$$ LANGUAGE sql SECURITY DEFINER;
+
+-- ------------------------------------------------------------------------------
+-- 3. VIẾT POLICIES (CHÍNH SÁCH BẢO MẬT) CHO TỪNG BẢNG
+-- Lưu ý: Nếu một bảng bật RLS mà không có Policy nào, mặc định TẤT CẢ truy cập sẽ bị chặn (Deny All).
+-- ------------------------------------------------------------------------------
+
+-- [A. Bảng product_types]
+-- Public: Xem danh mục máy tự do
+CREATE POLICY "Public can view product types" ON public.product_types FOR SELECT USING (true);
+-- Internal: Chỉ Admin và Staff được thêm/sửa/xóa
+CREATE POLICY "Admin and Staff can manage product types" ON public.product_types
+FOR ALL USING (public.get_current_user_role() IN ('admin', 'staff'));
+
+-- [B. Bảng motors]
+-- Public: Bất kỳ ai quét QR cũng có thể gọi API xem thông tin cơ bản của máy
+CREATE POLICY "Public can view motors info" ON public.motors FOR SELECT USING (true);
+-- Internal: Chỉ Admin và Staff quản lý xuất/nhập máy
+CREATE POLICY "Admin and Staff can manage motors" ON public.motors
+FOR ALL USING (public.get_current_user_role() IN ('admin', 'staff'));
+
+-- [C. Bảng customers]
+-- Public: Khách hàng điền form có thể tạo mới (INSERT) thông tin của họ
+CREATE POLICY "Public can insert customer data" ON public.customers FOR INSERT WITH CHECK (true);
+-- Internal: Chỉ nhân viên đăng nhập mới được xem và sửa tập khách hàng
+CREATE POLICY "Internal users can view and update customers" ON public.customers
+FOR SELECT USING (auth.uid() IS NOT NULL);
+CREATE POLICY "Internal users can update customers" ON public.customers
+FOR UPDATE USING (auth.uid() IS NOT NULL);
+
+-- [D. Bảng registrations]
+-- Public: Xem được đăng ký nếu đăng ký đó đang ACTIVE (Dùng khi tra cứu QR)
+CREATE POLICY "Public can view active registrations" ON public.registrations FOR SELECT USING (is_active = true);
+-- Public: Được phép submit form đăng ký, NHƯNG bắt buộc trạng thái phải là pending và is_active là false
+CREATE POLICY "Public can submit pending registrations" ON public.registrations
+FOR INSERT WITH CHECK (status = 'pending' AND is_active = false);
+-- Internal: Nhân viên được toàn quyền xem, duyệt và sửa đổi
+CREATE POLICY "Internal users can manage registrations" ON public.registrations
+FOR ALL USING (auth.uid() IS NOT NULL);
+
+-- [E. Bảng maintenance_logs]
+-- Public: Quét QR có thể xem lịch sử sửa chữa
+CREATE POLICY "Public can view maintenance logs" ON public.maintenance_logs FOR SELECT USING (true);
+-- Internal: Chỉ Technician và Admin được phép ghi nhận lịch sử bảo trì
+CREATE POLICY "Technician and Admin can manage maintenance" ON public.maintenance_logs
+FOR ALL USING (public.get_current_user_role() IN ('admin', 'technician'));
+
+-- [F. Bảng scan_logs]
+-- Public: Ai quét QR cũng lưu được log (Chỉ INSERT)
+CREATE POLICY "Public can insert scan logs" ON public.scan_logs FOR INSERT WITH CHECK (true);
+-- Internal: Chỉ nhân viên mới được xem bản đồ quét QR
+CREATE POLICY "Internal users can view scan logs" ON public.scan_logs
+FOR SELECT USING (auth.uid() IS NOT NULL);
+
+-- [G. Bảng audit_logs]
+-- Internal: Chỉ Admin mới được xem nhật ký thay đổi hệ thống.
+-- Việc INSERT do Trigger (có SECURITY DEFINER) xử lý nên không cần mở quyền INSERT ở đây.
+CREATE POLICY "Only Admin can view audit logs" ON public.audit_logs
+FOR SELECT USING (public.get_current_user_role() = 'admin');
+
+-- [H. Bảng users]
+-- Internal: Nhân viên có thể xem thông tin đồng nghiệp
+CREATE POLICY "Internal users can view user directory" ON public.users
+FOR SELECT USING (auth.uid() IS NOT NULL);
+-- Internal: Chỉ Admin mới có quyền thêm/sửa nhân sự
+CREATE POLICY "Only Admin can manage users" ON public.users
+FOR ALL USING (public.get_current_user_role() = 'admin');
